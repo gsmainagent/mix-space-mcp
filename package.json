@@ -8,7 +8,7 @@
     "mixspace-mcp": "src/index.ts"
   },
   "scripts": {
-    "start": "tsx src/index.ts",
+    "start": "tsc && node dist/index.js",
     "build": "tsc",
     "typecheck": "tsc --noEmit"
   },

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
+import { createServer } from "node:http"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"
 import { loadConfig } from "./config.js"
 import { MixSpaceClient } from "./client.js"
 import { registerPostTools } from "./tools/posts.js"
@@ -29,5 +30,44 @@ registerAggregateTools(server, client)
 registerCommentTools(server, client)
 registerMiscTools(server, client)
 
-const transport = new StdioServerTransport()
+const transport = new StreamableHTTPServerTransport({
+  sessionIdGenerator: undefined,
+})
+
 await server.connect(transport)
+
+const httpServer = createServer(async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*")
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, Mcp-Session-Id, Last-Event-ID"
+  )
+  res.setHeader("Access-Control-Expose-Headers", "Content-Type, Mcp-Session-Id")
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204).end()
+    return
+  }
+
+  try {
+    await transport.handleRequest(req, res)
+  } catch (err) {
+    if (!res.headersSent) {
+      res.writeHead(500, { "Content-Type": "application/json" })
+    }
+    res.end(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        error: { code: -32603, message: "Internal server error" },
+        id: null,
+      })
+    )
+    console.error("Error handling MCP request:", err)
+  }
+})
+
+const port = Number(process.env.PORT ?? 3000)
+httpServer.listen(port, () => {
+  console.error(`mixspace-mcp (Streamable HTTP) listening on port ${port}`)
+})
