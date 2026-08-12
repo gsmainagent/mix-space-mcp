@@ -1,0 +1,27 @@
+{
+  "name": "mixspace-mcp",
+  "version": "1.0.0",
+  "description": "MCP server wrapping Mix Space CMS REST API into tools for LLMs",
+  "type": "module",
+  "main": "src/index.ts",
+  "bin": {
+    "mixspace-mcp": "src/index.ts"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["mcp", "mixspace", "cms", "llm"],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "axios": "^1.9.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
+  }
+}
