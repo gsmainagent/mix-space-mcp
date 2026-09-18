@@ -16,25 +16,25 @@ import { registerMiscTools } from "./tools/misc.js"
 const config = loadConfig(process.argv.slice(2))
 const client = new MixSpaceClient(config)
 
-const server = new McpServer({
-  name: "mixspace-mcp",
-  version: "1.0.0",
-})
+// Stateless mode requires a fresh server+transport per request: a transport with
+// sessionIdGenerator=undefined cannot serve a second request (SDK >=1.2x).
+function createMcpServer(): McpServer {
+  const server = new McpServer({
+    name: "mixspace-mcp",
+    version: "1.0.0",
+  })
 
-registerPostTools(server, client)
-registerNoteTools(server, client)
-registerPageTools(server, client)
-registerCategoryTools(server, client)
-registerSearchTools(server, client)
-registerAggregateTools(server, client)
-registerCommentTools(server, client)
-registerMiscTools(server, client)
+  registerPostTools(server, client)
+  registerNoteTools(server, client)
+  registerPageTools(server, client)
+  registerCategoryTools(server, client)
+  registerSearchTools(server, client)
+  registerAggregateTools(server, client)
+  registerCommentTools(server, client)
+  registerMiscTools(server, client)
 
-const transport = new StreamableHTTPServerTransport({
-  sessionIdGenerator: undefined,
-})
-
-await server.connect(transport)
+  return server
+}
 
 const httpServer = createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*")
@@ -50,7 +50,17 @@ const httpServer = createServer(async (req, res) => {
     return
   }
 
+  const server = createMcpServer()
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+  })
+  res.on("close", () => {
+    void transport.close()
+    void server.close()
+  })
+
   try {
+    await server.connect(transport)
     await transport.handleRequest(req, res)
   } catch (err) {
     if (!res.headersSent) {
