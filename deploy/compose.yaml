@@ -1,30 +1,34 @@
-# mixspace-mcp 部署编排：应用容器 + frpc 域名隧道（不上云）
+# mix-space-lts-frontend-mcp 部署编排
 #
-# 照 workspace/infra/README.md 的三处改动落地：
-#   1. services.app  → mixspace-mcp 镜像（容器内端口 3000）
-#   2. frpc/frpc.toml → localIP=app, localPort=3000
-#   3. frpc/frpc.env  → FRP_TOKEN=<frps auth.token>
+# 镜像来自 ACR（本地构建后经 owner 授权推送），名称同仓库名。
 #
-# 约定要点（实测结论，别改）
-#  - 不发布任何宿主机端口：frps 按 customDomains 域名分流，本就不需要；
-#    WSL 是 mirrored 网络，绑 loopback 对 Windows 同样可达 —— 隔离靠「不发布端口」。
-#  - localIP 必须是同一 compose 网络里的服务名，不是 IP、不是宿主机端口。
-#  - frpc 用公共镜像 arm64m/frpc:v0.70.1，ENTRYPOINT 无默认参数 → 显式 -c。
-name: mixspace-mcp
+# 当前实际部署（2026-09-18）是等价的 `docker run` 形态：
+#   docker run -d --name mix-space-lts-frontend-mcp --restart unless-stopped \
+#     -p 127.0.0.1:3210:3000 -e MIXSPACE_API_URL=https://YOUR-BLOG-API \
+#     registry.cn-hangzhou.aliyuncs.com/gsagent/mix-space-lts-frontend-mcp:latest
+# 本文件是它的**可复现等价形式**（本地部署 + 端口）；登记见 workspace/DEPLOYMENTS.md。
+#
+# ⚠️ 勿与正在运行的 docker-run 容器同名冲突：先 `docker rm -f mix-space-lts-frontend-mcp`
+#    再 `docker compose up -d`。
+#
+# 需要公网隧道时用 profile：`docker compose --profile tunnel up -d`
+#   （那时去掉 app 的 ports；frps 按域名分流 ⇒ 不发布任何宿主机端口）
+name: mix-space-lts-frontend-mcp
 
 services:
   app:
-    image: mixspace-mcp:local
-    build:
-      context: ..
-    container_name: mixspace-mcp-app
+    image: registry.cn-hangzhou.aliyuncs.com/gsagent/mix-space-lts-frontend-mcp:latest
+    container_name: mix-space-lts-frontend-mcp
     restart: unless-stopped
     environment:
       # 工具内部硬编码 /api/v2，客户端已做端点自适应 ⇒ 裸 origin 与带路径都可
       MIXSPACE_API_URL: https://YOUR-BLOG-API
       PORT: "3000"
+    ports:
+      # 本地部署：仅 loopback（注意 mirrored 网络下对 Windows 同样可达，不算强隔离）
+      - "127.0.0.1:3210:3000"
     networks:
-      mixspace:
+      mslfm:
         aliases:
           - app                     # 必须等于 frpc.toml 里的 localIP
     healthcheck:
@@ -35,20 +39,22 @@ services:
       retries: 3
       start_period: 5s
 
+  # ---- 可选：公网隧道（docker compose --profile tunnel up -d）----
   frpc:
+    profiles: ["tunnel"]
     image: registry.cn-hangzhou.aliyuncs.com/arm64m/frpc:v0.70.1
-    container_name: mixspace-mcp-frpc
+    container_name: mix-space-lts-frontend-mcp-frpc
     restart: unless-stopped
     command: ["-c", "/etc/frp/frpc.toml"]
     depends_on:
       app:
         condition: service_started
     env_file:
-      - ./frpc/frpc.env            # FRP_TOKEN=...（不入库）
+      - ./frpc/frpc.env            # FRP_TOKEN=***（不入库）
     volumes:
       - ./frpc/frpc.toml:/etc/frp/frpc.toml:ro
-    networks: [mixspace]
+    networks: [mslfm]
 
 networks:
-  mixspace:
+  mslfm:
     driver: bridge
