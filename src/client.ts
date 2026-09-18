@@ -55,31 +55,17 @@ export class MixSpaceClient {
   }
 
   /**
-   * Happy-eyeball the candidate layouts once, then cache the one that answers.
-   * Only a successful probe is cached, so a backend that is down at startup
-   * gets re-probed on the next call instead of pinning a guess forever.
+   * Happy-eyeball the candidate layouts: race them in parallel and keep the
+   * first that answers, so a dead or slow layout costs one round trip rather
+   * than the sum of every candidate's timeout. Only a success is cached, so a
+   * backend that is down at startup gets re-probed instead of pinning a guess.
    */
   private async resolveEndpoint(): Promise<Endpoint> {
     if (this.cached) {
       return this.cached
     }
 
-    this.probing ??= (async () => {
-      for (const candidate of this.candidates) {
-        try {
-          await this.http.get(`${candidate.prefix}/posts`, {
-            baseURL: candidate.baseURL,
-            params: { page: 1, size: 1 },
-            timeout: 5_000,
-            validateStatus: (status) => status >= 200 && status < 300,
-          })
-          return candidate
-        } catch {
-          // Layout not served here; try the next candidate.
-        }
-      }
-      return undefined
-    })()
+    this.probing ??= this.probeAll()
 
     const found = await this.probing
     this.probing = undefined
@@ -92,6 +78,33 @@ export class MixSpaceClient {
     // Nothing answered: fall back to the first layout so the real request
     // produces the upstream error rather than a synthetic one.
     return this.candidates[0]
+  }
+
+  private async probeAll(): Promise<Endpoint | undefined> {
+    const controllers = this.candidates.map(() => new AbortController())
+
+    const attempts = this.candidates.map((candidate, i) =>
+      this.http
+        .get(`${candidate.prefix}/posts`, {
+          baseURL: candidate.baseURL,
+          params: { page: 1, size: 1 },
+          timeout: 5_000,
+          signal: controllers[i].signal,
+          validateStatus: (status) => status >= 200 && status < 300,
+        })
+        .then(() => candidate)
+    )
+
+    try {
+      return await Promise.any(attempts)
+    } catch {
+      return undefined
+    } finally {
+      // Cancel whichever candidates lost the race.
+      for (const controller of controllers) {
+        controller.abort()
+      }
+    }
   }
 
   async get<T = unknown>(path: string, params?: Record<string, unknown>): Promise<T> {
