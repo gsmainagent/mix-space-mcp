@@ -23,7 +23,7 @@
 ```bash
 MIXSPACE_API_URL=https://YOUR-BLOG-API \
 MIXSPACE_API_KEY=YOUR-API-KEY \
-npx -y github:gsmainagent/mixspace-mcp#main --transport stdio
+npx -y github:gsmainagent/mix-space-mcp#master --transport stdio
 ```
 
 首次运行会从 git 拉取并执行 `prepare` 构建 `dist/`（需要能装 devDependencies，属正常现象）。
@@ -65,7 +65,7 @@ Claude Desktop / 通用 `mcpServers` 配置：
       "command": "npx",
       "args": [
         "-y",
-        "github:gsmainagent/mixspace-mcp#main",
+        "github:gsmainagent/mix-space-mcp#master",
         "--transport",
         "stdio"
       ],
