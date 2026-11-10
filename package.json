@@ -30,6 +30,10 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": ["mcp", "mixspace", "cms", "llm"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gsmainagent/mix-space-mcp"
+  },
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
