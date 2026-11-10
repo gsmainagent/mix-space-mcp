@@ -31,7 +31,7 @@ npx -y github:gsmainagent/mixspace-mcp#main --transport stdio
 ### 方式二：本地构建
 
 ```bash
-git clone https://github.com/gsmainagent/mixspace-mcp.git
+git clone https://github.com/gsmainagent/mix-space-mcp.git
 cd mixspace-mcp
 npm ci
 npm run build
