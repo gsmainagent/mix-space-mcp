@@ -3,14 +3,31 @@
   "version": "1.0.0",
   "description": "MCP server wrapping Mix Space CMS REST API into tools for LLMs",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "dist/mcp.js",
+  "types": "dist/mcp.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/mcp.d.ts",
+      "import": "./dist/mcp.js"
+    }
+  },
   "bin": {
-    "mixspace-mcp": "src/index.ts"
+    "mixspace-mcp": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
   },
   "scripts": {
-    "start": "tsc && node dist/index.js",
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/cli.js",
+    "dev": "tsx src/cli.ts",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build"
   },
   "keywords": ["mcp", "mixspace", "cms", "llm"],
   "license": "MIT",

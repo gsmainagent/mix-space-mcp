@@ -34,6 +34,28 @@ function buildCandidates(rawUrl: string): Endpoint[] {
   ]
 }
 
+export interface RawResponse {
+  status: number
+  data: unknown
+  contentType?: string
+}
+
+/** Upstream bodies may be JSON or plain text; only parse what looks like JSON. */
+function parseBody(body: string, contentType?: string): unknown {
+  if (body === "") {
+    return null
+  }
+  const looksJson = (contentType && /json/i.test(contentType)) || /^\s*[[{]/.test(body)
+  if (looksJson) {
+    try {
+      return JSON.parse(body)
+    } catch {
+      // Fall through and return the raw text.
+    }
+  }
+  return body
+}
+
 export class MixSpaceClient {
   private http: AxiosInstance
   private candidates: Endpoint[]
@@ -125,5 +147,42 @@ export class MixSpaceClient {
       params: clean,
     })
     return res.data
+  }
+
+  /**
+   * GET an upstream path without throwing on non-2xx: the REST bridge forwards
+   * the upstream status code and body verbatim. Network failures become 502.
+   */
+  async getRaw(path: string, params?: Record<string, string>): Promise<RawResponse> {
+    const clean: Record<string, string> = {}
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== "") {
+          clean[k] = v
+        }
+      }
+    }
+
+    const endpoint = await this.resolveEndpoint()
+    const relative = path.replace(API_PREFIX_RE, "")
+
+    try {
+      const res = await this.http.get<string>(endpoint.prefix + relative, {
+        baseURL: endpoint.baseURL,
+        params: clean,
+        responseType: "text",
+        transformResponse: [(data: unknown) => data],
+        validateStatus: () => true,
+      })
+      const contentType =
+        typeof res.headers["content-type"] === "string" ? res.headers["content-type"] : undefined
+      return { status: res.status, data: parseBody(res.data, contentType), contentType }
+    } catch (err) {
+      return {
+        status: 502,
+        data: { error: err instanceof Error ? err.message : String(err) },
+        contentType: "application/json",
+      }
+    }
   }
 }
