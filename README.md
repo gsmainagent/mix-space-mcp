@@ -28,6 +28,10 @@ npx -y github:gsmainagent/mix-space-mcp#master --transport stdio
 
 首次运行会从 git 拉取并执行 `prepare` 构建 `dist/`（需要能装 devDependencies，属正常现象）。
 
+> ⚠️ 本仓库现为 **public**，公开拉取无需凭据。但若仓库转回 **private**，`npx` 走 git 取包就需要本机先有该 GitHub 账号的 git 凭据（`gh auth login` 写 credential helper，或配好 SSH key）。没有凭据时 `npx` 会**静默失败**——不打印任何错误，只以退出码 128 结束，看起来就像「什么都没发生」。
+> 自查：`npx -y github:gsmainagent/mix-space-mcp#master --help; echo $?`，若输出 `128` 就是凭据问题，改用方式二或先修凭据。
+> 另注：`npx` 按 spec 字符串缓存安装结果，同一 `#master` 不会因上游有新提交而重新拉取；要拿最新提交先 `rm -rf ~/.npm/_npx`（或改用带 commit 的 spec）。
+
 ### 方式二：本地构建
 
 ```bash
