@@ -4,9 +4,22 @@ on:
   push:
     branches: [master]
 
+env:
+  IMAGE: ghcr.io/gsmainagent/mix-space-mcp
+
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
+  build:
+    name: Build linux/${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            # GitHub-hosted ARM runner (free for public repos); no QEMU needed.
+            runner: ubuntu-24.04-arm
     permissions:
       contents: read
       packages: write
@@ -21,18 +34,80 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Per-arch artifacts get a tmp tag only; labels/annotations are applied
+      # HERE — the merge job references these manifests by digest and will not
+      # rewrite the child image config.
+      - name: Setup buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/gsmainagent/mix-space-mcp
+          images: ${{ env.IMAGE }}
           tags: |
-            type=raw,value=latest
-            type=sha,prefix=
+            type=raw,value=tmp-${{ github.sha }}-${{ matrix.arch }}
 
-      - name: Build and push
+      - name: Build and push (single arch)
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/${{ matrix.arch }}
           push: true
+          # Keep each tmp tag a plain single-arch manifest so imagetools can
+          # merge it; also required for registries that choke on attestations.
+          provenance: false
+          sbom: false
           tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=build-linux-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=build-linux-${{ matrix.arch }}
+
+  publish:
+    name: Publish multi-arch index
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify per-arch manifests exist
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            ref="${IMAGE}:tmp-${GITHUB_SHA}-${arch}"
+            echo "::group::verify ${ref}"
+            # Existence check; plain single-arch manifests do not print a
+            # Platform line in `imagetools inspect`, so parse the raw JSON:
+            # must be an image manifest, not an (unexpected) index.
+            raw=$(docker buildx imagetools inspect --raw "$ref")
+            mt=$(printf '%s' "$raw" | jq -r '.mediaType // .[0].mediaType // "none"')
+            if [ "$mt" != "application/vnd.oci.image.manifest.v1+json" ] \
+               && [ "$mt" != "application/vnd.docker.distribution.manifest.v2+json" ]; then
+              echo "::error::${ref} is not a plain single-arch manifest (mediaType=${mt})"
+              exit 1
+            fi
+            echo "OK: ${ref} present (${mt})"
+            echo "::endgroup::"
+          done
+
+      # Final tags (latest + short sha) point at a multi-arch index referencing
+      # the tmp tags by digest. Do NOT delete tmp tags afterwards: the index
+      # depends on them.
+      - name: Create multi-arch index
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          docker buildx imagetools create \
+            -t "${IMAGE}:latest" \
+            -t "${IMAGE}:${short_sha}" \
+            "${IMAGE}:tmp-${GITHUB_SHA}-amd64" \
+            "${IMAGE}:tmp-${GITHUB_SHA}-arm64"
+          echo "Published ${IMAGE}:latest and ${IMAGE}:${short_sha} (linux/amd64 + linux/arm64)"
