@@ -84,9 +84,14 @@ jobs:
           for arch in amd64 arm64; do
             ref="${IMAGE}:tmp-${GITHUB_SHA}-${arch}"
             echo "::group::inspect ${ref}"
-            docker buildx imagetools inspect "$ref" \
-              | grep -q "Platform:[[:space:]]*linux/${arch}" \
-              || { echo "::error::missing or wrong-arch manifest for ${ref}"; exit 1; }
+            # Capture first: `grep -q` closing the pipe would SIGPIPE docker
+            # and pipefail would turn a passing check into a false failure.
+            out=$(docker buildx imagetools inspect "$ref")
+            echo "$out"
+            if ! printf '%s\n' "$out" | grep -q "linux/${arch}"; then
+              echo "::error::missing or wrong-arch manifest for ${ref}"
+              exit 1
+            fi
             echo "::endgroup::"
           done
 
