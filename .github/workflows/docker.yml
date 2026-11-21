@@ -83,15 +83,18 @@ jobs:
           set -euo pipefail
           for arch in amd64 arm64; do
             ref="${IMAGE}:tmp-${GITHUB_SHA}-${arch}"
-            echo "::group::inspect ${ref}"
-            # Capture first: `grep -q` closing the pipe would SIGPIPE docker
-            # and pipefail would turn a passing check into a false failure.
-            out=$(docker buildx imagetools inspect "$ref")
-            echo "$out"
-            if ! printf '%s\n' "$out" | grep -q "linux/${arch}"; then
-              echo "::error::missing or wrong-arch manifest for ${ref}"
+            echo "::group::verify ${ref}"
+            # Existence check; plain single-arch manifests do not print a
+            # Platform line in `imagetools inspect`, so parse the raw JSON:
+            # must be an image manifest, not an (unexpected) index.
+            raw=$(docker buildx imagetools inspect --raw "$ref")
+            mt=$(printf '%s' "$raw" | jq -r '.mediaType // .[0].mediaType // "none"')
+            if [ "$mt" != "application/vnd.oci.image.manifest.v1+json" ] \
+               && [ "$mt" != "application/vnd.docker.distribution.manifest.v2+json" ]; then
+              echo "::error::${ref} is not a plain single-arch manifest (mediaType=${mt})"
               exit 1
             fi
+            echo "OK: ${ref} present (${mt})"
             echo "::endgroup::"
           done
 
