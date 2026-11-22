@@ -5,7 +5,10 @@ on:
     branches: [master]
 
 env:
-  IMAGE: ghcr.io/gsmainagent/mix-space-mcp
+  # Must stay in the workflow repository's own namespace: a GITHUB_TOKEN can
+  # only push packages for its own owner (org runs pushing to a user namespace
+  # fail with permission_denied / "installation does not exist").
+  IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
   build:
